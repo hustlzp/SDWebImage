@@ -401,6 +401,13 @@ static id<SDImageLoader> _defaultImageLoader;
                 [self callCompletionBlockForOperation:operation completion:completedBlock error:[NSError errorWithDomain:SDWebImageErrorDomain code:SDWebImageErrorCancelled userInfo:@{NSLocalizedDescriptionKey : @"Operation cancelled by user during sending the request"}] url:url];
             } else if (cachedImage && options & SDWebImageRefreshCached && [error.domain isEqualToString:SDWebImageErrorDomain] && error.code == SDWebImageErrorCacheNotModified) {
                 // Image refresh hit the NSURLCache cache, do not call the completion block
+            } else if (cachedImage &&
+                       options & SDWebImageRefreshCached &&
+                       options & SDWebImageClearCacheWhenHTTP404 &&
+                       [error.domain isEqualToString:SDWebImageErrorDomain] &&
+                       error.code == SDWebImageErrorInvalidDownloadStatusCode &&
+                       [error.userInfo[SDWebImageErrorDownloadStatusCodeKey] integerValue] == 404) {
+                [self clearCacheForURL:url context:context];
             } else if ([error.domain isEqualToString:SDWebImageErrorDomain] && error.code == SDWebImageErrorCancelled) {
                 // Download operation cancelled by user before sending the request, don't block failed URL
                 [self callCompletionBlockForOperation:operation completion:completedBlock error:error url:url];
@@ -571,6 +578,17 @@ static id<SDImageLoader> _defaultImageLoader;
 }
 
 #pragma mark - Helper
+
+- (void)clearCacheForURL:(NSURL *)url context:(nullable SDWebImageContext *)context {
+    NSString *key = [self cacheKeyForURL:url context:context];
+    id<SDImageCache> imageCache;
+    if ([context[SDWebImageContextImageCache] conformsToProtocol:@protocol(SDImageCache)]) {
+        imageCache = context[SDWebImageContextImageCache];
+    } else {
+        imageCache = self.imageCache;
+    }
+    [imageCache removeImageForKey:key cacheType:SDImageCacheTypeAll completion:nil];
+}
 
 - (void)safelyRemoveOperationFromRunning:(nullable SDWebImageCombinedOperation*)operation {
     if (!operation) {
